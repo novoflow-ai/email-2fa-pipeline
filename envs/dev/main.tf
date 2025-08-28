@@ -30,7 +30,7 @@ module "twofa_parser" {
   tenant_configs = {
     "ermi" = {
       sender_allowlist = ["*"]
-      regex_profile    = "universal"  # Matches various 2FA formats
+      regex_profile    = "royalhealth"  # Custom profile for Royal Health emails
     }
   }
 }

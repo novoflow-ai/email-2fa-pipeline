@@ -27,6 +27,14 @@ locals {
         "verification code\\s*[:：]?\\s*([A-Z0-9]{4,8})"
       ]
     }
+    royalhealth = {
+      patterns = [
+        "(?i)Use verification code\\s+([0-9]{4,8})",  # Royal Health specific format
+        "(?i)verification code\\s+([0-9]{4,8})",       # General verification code
+        "(?i)(?:code|OTP|2FA|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",  # Common patterns
+        "\\b([0-9]{6})\\b"  # Fallback: any standalone 6-digit number
+      ]
+    }
   }
 }
 
