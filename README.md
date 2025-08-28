@@ -1,80 +1,193 @@
-## Email 2FA Inbound Pipeline (Phase‑1)
+# 2FA Email Pipeline (HIPAA-Compliant)
 
-This repository provisions a single, minimal SES inbound pipeline for catching 2FA emails and landing them safely in S3, with basic observability via SNS→SQS.
+A serverless AWS pipeline for capturing and extracting 2FA codes from forwarded emails, built with HIPAA compliance and healthcare systems in mind.
 
-### What this stack creates
-- KMS CMK and alias for S3 encryption
-- S3 bucket for raw MIME with:
-  - Versioning, ownership controls, and public access blocks
-  - Default SSE‑KMS (CMK), Bucket Keys enabled
-  - Lifecycle rule to expire `inbound/` objects after 1 day
-  - Bucket policy: deny non‑TLS; allow SES PutObject/PutObjectAcl to the prefix
-- SNS topic for SES inbound events + topic policy allowing SES to publish
-- SQS queue subscribed to the topic (encrypted with the CMK)
-- SES receipt rule:
-  - Action 1: SNS publish (includes MIME if ≤150KB)
-  - Action 2: S3 write to the landing bucket/prefix
-- Safe AES256↔KMS flip during rule updates (explained below)
+## 🎯 Overview
 
-### Variables you’ll likely override
-- `region` (default `us-east-2`)
-- `env` (e.g., `prod`, `staging`)
-- `bucket_name` (must be globally unique)
-- `receipt_rule_set_name` and `receipt_rule_name` (must exist and/or match your SES setup)
-- `recipients` (e.g., `["sanity@auth.novoflow.io"]`)
-- `object_prefix` (default `inbound/`)
+This pipeline automatically:
+1. Receives forwarded 2FA emails via AWS SES
+2. Extracts verification codes using customizable regex patterns
+3. Stores codes temporarily (15-minute TTL)
+4. Provides secure API access for code retrieval
+5. Ensures one-time use with automatic expiration
 
-### Usage
-```bash
-terraform init -upgrade
-terraform validate
-terraform plan \
-  -var='region=us-east-2' \
-  -var='env=prod' \
-  -var='bucket_name=YOUR-GLOBAL-UNIQUE-BUCKET' \
-  -var='receipt_rule_set_name=inbound-auth' \
-  -var='receipt_rule_name=sanity-to-s3' \
-  -var='recipients=["sanity@auth.novoflow.io"]'
-terraform apply -auto-approve
+## 🏗️ Architecture
+
+```
+Email → SES → S3 → Lambda (Parser) → DynamoDB
+                     ↓
+                API Gateway → Lambda (Lookup) → DynamoDB
 ```
 
-### KMS/SES “test PUT” issue and our workaround
-When you create or update a SES receipt rule with an S3 action, SES performs a small “test PUT” to the target bucket. If the bucket enforces SSE‑KMS and KMS permissions/policy lines aren’t perfectly aligned, this test write can fail with AccessDenied/KMS errors. Symptoms include:
-- “Could not write to S3 bucket” in SES
-- S3 AccessDenied or KMS AccessDenied errors during rule updates
+### Components
+- **AWS SES**: Receives emails at dedicated addresses
+- **S3**: Stores raw emails with encryption
+- **Lambda Parser**: Extracts codes from emails
+- **DynamoDB**: Temporary code storage with TTL
+- **API Gateway**: RESTful endpoint for code retrieval
+- **CloudWatch**: Monitoring and alerts
 
-To make this safe and reliable, this stack temporarily flips the bucket’s default encryption to AES256 immediately before the rule change and flips back to your CMK immediately after:
-- `null_resource.flip_to_aes_before_ses_rule` sets AES256 and is explicitly referenced in the SES rule `depends_on` so SES waits for this flip.
-- `null_resource.flip_back_to_kms_after_ses_rule` depends on the SES rule and restores SSE‑KMS (with Bucket Keys) right after the rule succeeds.
+## 🔒 Security & Compliance
 
-Result: your final state remains SSE‑KMS with your CMK, but the transient SES test write never touches KMS.
+### HIPAA Compliance
+- ✅ Encryption at rest (S3, DynamoDB, SQS)
+- ✅ Encryption in transit (TLS required)
+- ✅ Short data retention (15-minute TTL)
+- ✅ Audit logging via CloudWatch
+- ✅ PHI tagging on all resources
+- ✅ One-time code usage
 
-### Common pitfalls and how to fix
-- Region mismatch:
-  - Ensure `var.region` matches your SES receiving region for the rule set.
-- Wrong rule set or inactive set:
-  - `var.receipt_rule_set_name` must refer to an existing set, and that set must be active in the SES console.
-- Recipients don’t match:
-  - `recipients` must include the exact address or domain you’re testing.
-- Bucket policy SourceArn/SourceAccount mismatch:
-  - `local.source_arn` is built from your region, account, rule set name, and rule name. If any of these don’t match what SES actually uses, S3 denies the write. Double‑check both names and region.
-- AWS CLI not installed on the apply runner:
-  - The AES/KMS flip uses `aws s3api put-bucket-encryption`. Install the AWS CLI and ensure the identity has `s3:PutBucketEncryption`.
+### Access Control
+- Customer-specific email addresses
+- Unique API keys per customer
+- Application-level sender whitelisting
+- Internal-only API access
 
-### Testing the flow
-1) Apply the stack. Confirm `terraform validate` is green and `terraform apply` succeeds.
-2) Send an email to one of the `recipients` (e.g., `sanity@auth.novoflow.io`).
-3) Check:
-   - S3: object appears under `inbound/`
-   - SQS: message arrives (from the SNS subscription)
+## 🚀 Quick Start
 
-### Outputs
-- `s3_bucket_name` – landing bucket name
-- `kms_key_arn` – CMK used for SSE‑KMS
-- `ses_rule_name` / `ses_rule_set` – SES identifiers
-- `ses_events_topic_arn` – SNS topic for inbound events
-- `ses_events_queue_url` / `ses_events_queue_arn` – SQS subscription details
+### Prerequisites
+- AWS Account with SES access
+- Terraform >= 1.0
+- AWS CLI configured
+- Verified SES domain
 
-### Commit hygiene
-- Commit `.terraform.lock.hcl` for reproducible provider versions.
-- Do not commit `.terraform/` (already in `.gitignore`).
+### Installation
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/your-org/email_2fa_pipeline.git
+cd email_2fa_pipeline
+```
+
+2. **Run setup**
+```bash
+./scripts/setup-infrastructure.sh
+```
+
+3. **Deploy infrastructure**
+```bash
+cd envs/dev
+terraform apply tfplan
+```
+
+4. **Request SES production access** (removes sender restrictions)
+```bash
+./scripts/request-production-access.sh
+```
+
+## 📧 Customer Management
+
+### Provision a new customer
+```bash
+./scripts/provision-customer.sh
+# Enter: customer-name (e.g., "acme")
+# Creates: acme@auth.yourdomain.com
+```
+
+### Test customer integration
+```bash
+./scripts/test-customer.sh customer-name
+```
+
+### List customers
+```bash
+./scripts/list-customers.sh
+```
+
+### Manage sender whitelists
+```bash
+./scripts/manage-senders.sh
+```
+
+## 🔌 API Usage
+
+### Retrieve 2FA Code
+```bash
+curl -X POST https://your-api-gateway-url/codes \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: customer-api-key" \
+  -d '{"recipient": "customer@auth.yourdomain.com"}'
+```
+
+### Response
+```json
+{
+  "code": "123456",
+  "recipient": "customer@auth.yourdomain.com",
+  "expiresAt": "2024-01-01T12:15:00.000Z"
+}
+```
+
+## 📁 Project Structure
+
+```
+email_2fa_pipeline/
+├── modules/
+│   ├── ses_inbound_hipaa/    # SES → S3 pipeline
+│   └── 2fa_parser/            # Lambda functions & API
+├── envs/
+│   └── dev/                   # Environment configuration
+├── scripts/
+│   ├── setup-infrastructure.sh
+│   ├── provision-customer.sh
+│   ├── test-customer.sh
+│   ├── list-customers.sh
+│   ├── manage-senders.sh
+│   └── request-production-access.sh
+└── README.md
+```
+
+## ⚙️ Configuration
+
+### Tenant Configuration (envs/dev/main.tf)
+```hcl
+tenant_configs = {
+  "customer-name" = {
+    sender_allowlist = ["sender@service.com"]  # or ["*"] for all
+    regex_profile    = "universal"
+  }
+}
+```
+
+### Regex Profiles
+- `universal`: Matches most common 2FA formats
+- `standard`: Basic 6-digit code extraction
+- Custom profiles can be added in `modules/2fa_parser/main.tf`
+
+## 🔍 Monitoring
+
+- **CloudWatch Logs**: All Lambda executions
+- **CloudWatch Metrics**: Code processing, API calls
+- **CloudWatch Alarms**: No codes received, parser errors
+- **Dead Letter Queue**: Failed message processing
+
+## 🚨 Troubleshooting
+
+### SES Sandbox Mode
+If emails aren't being received:
+1. Check SES sandbox status: `./scripts/manage-senders.sh`
+2. Request production access: `./scripts/request-production-access.sh`
+
+### Code Not Found
+1. Check sender is whitelisted for customer
+2. Verify regex pattern matches code format
+3. Check CloudWatch logs for parser errors
+
+### API Authentication Failed
+1. Verify API key is correct
+2. Check customer is provisioned
+3. Ensure API Gateway is deployed
+
+## 📝 License
+
+[Your License Here]
+
+## 🤝 Contributing
+
+[Your Contributing Guidelines]
+
+## 📞 Support
+
+For issues or questions:
+- Email: founders@novoflow.io
+- Phone: +1 6284448155

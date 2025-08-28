@@ -1,31 +1,71 @@
-# Local Terraform directories
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
 .terraform/
-
-# Terraform state files
-terraform.tfstate
-terraform.tfstate.*
-
-# Crash logs
+.terraform.lock.hcl
 crash.log
-crash.*.log
-
-# Sensitive variable files (do not commit)
 *.tfvars
-*.tfvars.json
-
-# Ignore override files as they are for local customization
+!*.tfvars.example
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
-# CLI configuration files
-terraform.rc
-.terraformrc
+# Lambda packages
+*.zip
+node_modules/
+package-lock.json
 
-# Plan files
-*.tfplan
-plan.out
+# AWS
+.aws/
+*.pem
 
-# Do NOT ignore .terraform.lock.hcl (commit lock file)
+# Environment-specific
+envs/*/terraform.tfvars
+envs/*/tfplan
+envs/*/.terraform/
+envs/*/setup-outputs.json
+envs/*/*.backup
 
+# Customer data
+customers/*.json
+customers/*-README.md
+customers/*-api-key.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.out
+
+# Test files
+test-*.json
+test-*.txt
+test-*.sh
+!scripts/test-*.sh
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Documentation builds
+docs/_build/
+*.pdf

@@ -1,0 +1,15 @@
+# AWS Configuration
+aws_profile = "your-aws-profile"
+region      = "us-east-2"
+env         = "dev"
+
+# SES Configuration
+receipt_rule_set_name = "inbound-auth-hipaa"
+receipt_rule_name     = "2fa-emails-hipaa"
+
+# Accept all emails to your domain
+recipients = ["auth.yourdomain.com"]
+
+# S3 Configuration
+bucket_name   = "your-ses-hipaa-dev-us-east-2"
+object_prefix = "emails/"
