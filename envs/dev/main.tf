@@ -30,7 +30,7 @@ module "twofa_parser" {
   tenant_configs = {
     "ermi" = {
       sender_allowlist = ["*"]
-      regex_profile    = "royalhealth"  # Custom profile for Royal Health emails
+      regex_patterns   = ["(?<=code )\\d{6}"]  # Royal Health specific: matches 6 digits after "code "
     }
   }
 }

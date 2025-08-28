@@ -31,31 +31,25 @@ REGION=$(jq -r .region "$SETUP_FILE")
 ENV=$(jq -r .env "$SETUP_FILE")
 ENV_DIR=$(dirname "$SETUP_FILE")
 
-# Function to display available regex profiles
-show_regex_profiles() {
-    echo -e "\n${BLUE}Available Regex Profiles:${NC}"
+# Function to display regex pattern examples
+show_regex_examples() {
+    echo -e "\n${BLUE}Common Regex Pattern Examples:${NC}"
     echo ""
-    echo -e "${CYAN}standard${NC} - Basic patterns for common 2FA formats"
-    echo "  • Matches: 'code: 123456', 'verification code: 123456'"
-    echo "  • Supports 4-8 digit codes"
+    echo -e "${CYAN}Exact match patterns:${NC}"
+    echo '  • "(?<=code )\\d{6}" - Matches 6 digits after "code " (e.g., "code 123456")'
+    echo '  • "(?<=Use verification code )\\d{6}" - Royal Health format'
+    echo '  • "(?<=OTP: )\\d{6}" - Matches 6 digits after "OTP: "'
     echo ""
-    echo -e "${CYAN}universal${NC} - Comprehensive pattern matching (recommended)"
-    echo "  • Matches: code, OTP, 2FA, token, pin, passcode"
-    echo "  • Case-insensitive, multiple formats"
-    echo "  • Includes fallback for any standalone 6-digit number"
+    echo -e "${CYAN}Flexible patterns:${NC}"
+    echo '  • "(?i)code\\s*[:：]?\\s*(\\d{6})" - Case-insensitive, optional colon/space'
+    echo '  • "verification code\\s+(\\d{4,8})" - 4-8 digits after "verification code"'
+    echo '  • "(\\d{6})\\s*is your.*code" - "123456 is your verification code"'
     echo ""
-    echo -e "${CYAN}alphanumeric${NC} - For codes with letters and numbers"
-    echo "  • Matches: 'code: ABC123', 'token: X9Y8Z7'"
-    echo "  • Supports 4-8 character alphanumeric codes"
+    echo -e "${CYAN}Fallback patterns:${NC}"
+    echo '  • "\\b(\\d{6})\\b" - Any standalone 6-digit number'
+    echo '  • "\\b(\\d{4,8})\\b" - Any standalone 4-8 digit number'
     echo ""
-    echo -e "${CYAN}royalhealth${NC} - Optimized for Royal Health EHR emails"
-    echo "  • Matches: 'Use verification code 130651'"
-    echo "  • Handles Royal Health specific format"
-    echo "  • Includes universal fallback patterns"
-    echo ""
-    echo -e "${CYAN}custom${NC} - Define your own patterns"
-    echo "  • Add custom regex patterns to the module"
-    echo ""
+    echo -e "${YELLOW}Note: Patterns are tried in order. Put specific patterns first.${NC}"
 }
 
 # Function to show current customer config
@@ -72,9 +66,8 @@ show_customer_config() {
                 gsub(/.*sender_allowlist = \[/, "  Sender Allowlist: [")
                 print
             }
-            found && /regex_profile/ { 
-                gsub(/.*regex_profile *= *"/, "  Regex Profile: ")
-                gsub(/".*/, "")
+            found && /regex_patterns/ { 
+                gsub(/.*regex_patterns *= *\[/, "  Regex Patterns: [")
                 print
                 found=0
             }
@@ -93,21 +86,37 @@ show_customer_config() {
     fi
 }
 
-# Function to update regex profile
-update_regex_profile() {
+# Function to update regex patterns
+update_regex_patterns() {
     local customer=$1
-    local new_profile=$2
+    shift
+    local patterns=("$@")
     
-    echo -e "\n${YELLOW}Updating regex profile for $customer to: $new_profile${NC}"
+    echo -e "\n${YELLOW}Updating regex patterns for $customer${NC}"
+    
+    # Build the patterns array string
+    local patterns_str="["
+    local first=true
+    for pattern in "${patterns[@]}"; do
+        if [ "$first" = true ]; then
+            first=false
+        else
+            patterns_str+=", "
+        fi
+        # Escape backslashes for sed
+        escaped_pattern=$(echo "$pattern" | sed 's/\\/\\\\/g')
+        patterns_str+="\"$escaped_pattern\""
+    done
+    patterns_str+="]"
     
     # Update main.tf using sed
-    sed -i.backup "/$customer.*{/,/}/ s/regex_profile.*=.*/      regex_profile    = \"$new_profile\"/" "$ENV_DIR/main.tf"
+    sed -i.backup "/$customer.*{/,/}/ s/regex_patterns.*=.*/      regex_patterns   = $patterns_str/" "$ENV_DIR/main.tf"
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Updated regex profile${NC}"
+        echo -e "${GREEN}✓ Updated regex patterns${NC}"
         return 0
     else
-        echo -e "${RED}❌ Failed to update regex profile${NC}"
+        echo -e "${RED}❌ Failed to update regex patterns${NC}"
         return 1
     fi
 }
@@ -147,38 +156,6 @@ update_sender_allowlist() {
     fi
 }
 
-# Function to add custom regex profile
-add_custom_regex_profile() {
-    local profile_name=$1
-    
-    echo -e "\n${YELLOW}To add a custom regex profile '$profile_name':${NC}"
-    echo ""
-    echo "Edit: $PROJECT_ROOT/modules/2fa_parser/main.tf"
-    echo ""
-    echo "Add to the regex_profiles local variable:"
-    echo -e "${CYAN}"
-    cat <<'EOF'
-    custom_name = {
-      patterns = [
-        "your-regex-pattern-here",
-        "another-pattern"
-      ]
-    }
-EOF
-    echo -e "${NC}"
-    echo ""
-    echo "Example patterns:"
-    echo '  • "\\b([0-9]{6})\\b" - Any 6-digit number'
-    echo '  • "(?i)code\\s*[:：]?\\s*([0-9]{4,8})" - Case-insensitive "code: 123456"'
-    echo '  • "([A-Z0-9]{6})" - 6-character alphanumeric'
-    echo ""
-    read -p "Would you like to open the file in your editor? (y/N) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ${EDITOR:-vi} "$PROJECT_ROOT/modules/2fa_parser/main.tf"
-    fi
-}
-
 # Main menu
 main_menu() {
     while true; do
@@ -187,10 +164,9 @@ main_menu() {
         echo -e "======================================${NC}"
         echo ""
         echo "1. View customer configuration"
-        echo "2. Edit regex profile"
+        echo "2. Edit regex patterns"
         echo "3. Edit sender allowlist"
-        echo "4. View available regex profiles"
-        echo "5. Add custom regex profile"
+        echo "4. View regex pattern examples"
         echo "0. Exit"
         echo ""
         read -p "Choose an option: " option
@@ -211,8 +187,8 @@ main_menu() {
                 ;;
             
             2)
-                # Edit regex profile
-                echo -e "\n${YELLOW}Edit Regex Profile${NC}"
+                # Edit regex patterns
+                echo -e "\n${YELLOW}Edit Regex Patterns${NC}"
                 echo ""
                 echo "Available customers:"
                 for customer_file in "$PROJECT_ROOT"/customers/*.json; do
@@ -225,22 +201,28 @@ main_menu() {
                 read -p "Customer name: " CUSTOMER_NAME
                 
                 show_customer_config "$CUSTOMER_NAME"
-                show_regex_profiles
+                show_regex_examples
                 
                 echo ""
-                read -p "New regex profile (standard/universal/alphanumeric/royalhealth/custom): " NEW_PROFILE
+                echo -e "${YELLOW}Enter regex patterns (one per line, empty line to finish):${NC}"
+                echo -e "${CYAN}Example: (?<=code )\\d{6}${NC}"
+                echo ""
                 
-                if [[ "$NEW_PROFILE" =~ ^(standard|universal|alphanumeric|royalhealth)$ ]]; then
-                    update_regex_profile "$CUSTOMER_NAME" "$NEW_PROFILE"
+                patterns=()
+                while true; do
+                    read -p "Pattern ${#patterns[@]}: " pattern
+                    if [ -z "$pattern" ]; then
+                        break
+                    fi
+                    patterns+=("$pattern")
+                done
+                
+                if [ ${#patterns[@]} -gt 0 ]; then
+                    update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"
                     echo -e "\n${YELLOW}To apply changes:${NC}"
                     echo -e "${BLUE}cd $ENV_DIR && terraform apply${NC}"
-                elif [ "$NEW_PROFILE" = "custom" ]; then
-                    read -p "Custom profile name: " CUSTOM_NAME
-                    add_custom_regex_profile "$CUSTOM_NAME"
-                    echo -e "\n${YELLOW}After adding custom patterns, update the customer:${NC}"
-                    echo "Run this script again and set profile to: $CUSTOM_NAME"
                 else
-                    echo -e "${RED}Invalid profile name${NC}"
+                    echo -e "${RED}No patterns entered${NC}"
                 fi
                 ;;
             
@@ -273,14 +255,8 @@ main_menu() {
                 ;;
             
             4)
-                # View regex profiles
-                show_regex_profiles
-                ;;
-            
-            5)
-                # Add custom regex profile
-                read -p "Custom profile name: " CUSTOM_NAME
-                add_custom_regex_profile "$CUSTOM_NAME"
+                # View regex pattern examples
+                show_regex_examples
                 ;;
             
             0)
@@ -306,7 +282,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "  --help, -h       Show this help message"
     echo ""
     echo "Configurations you can edit:"
-    echo "  • Regex Profile: Choose parsing patterns (standard/universal/alphanumeric/custom)"
+    echo "  • Regex Patterns: Custom regex patterns for parsing 2FA codes"
     echo "  • Sender Allowlist: Control which senders are accepted"
     exit 0
 fi
@@ -317,15 +293,31 @@ if [ ! -z "$1" ]; then
     show_customer_config "$CUSTOMER_NAME"
     echo ""
     echo "What would you like to edit?"
-    echo "1. Regex profile"
+    echo "1. Regex patterns"
     echo "2. Sender allowlist"
     read -p "Choice (1/2): " EDIT_CHOICE
     
     if [ "$EDIT_CHOICE" = "1" ]; then
-        show_regex_profiles
+        show_regex_examples
         echo ""
-        read -p "New regex profile: " NEW_PROFILE
-        update_regex_profile "$CUSTOMER_NAME" "$NEW_PROFILE"
+        echo -e "${YELLOW}Enter regex patterns (one per line, empty line to finish):${NC}"
+        echo -e "${CYAN}Example: (?<=code )\\d{6}${NC}"
+        echo ""
+        
+        patterns=()
+        while true; do
+            read -p "Pattern ${#patterns[@]}: " pattern
+            if [ -z "$pattern" ]; then
+                break
+            fi
+            patterns+=("$pattern")
+        done
+        
+        if [ ${#patterns[@]} -gt 0 ]; then
+            update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"
+        else
+            echo -e "${RED}No patterns entered${NC}"
+        fi
     elif [ "$EDIT_CHOICE" = "2" ]; then
         echo -e "\n${YELLOW}Enter new sender allowlist:${NC}"
         echo "  • Use '*' to accept all, or comma-separate multiple"

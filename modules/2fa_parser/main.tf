@@ -3,37 +3,22 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
   
-  # Common regex patterns for 2FA codes
-  regex_profiles = {
-    standard = {
-      patterns = [
-        "(?:code|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",
-        "verification code\\s*[:：]?\\s*([0-9]{4,8})",
-        "([0-9]{4,8})\\s*is your.*code"
-      ]
-    }
-    universal = {
-      patterns = [
-        "(?i)(?:verification code|code|OTP|2FA|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",
-        "([0-9]{4,8})\\s*is your.*(?:code|OTP|token)",
-        "(?i)(?:authentication|security|access)\\s*code\\s*[:：]?\\s*([0-9]{4,8})",
-        "(?i)passcode\\s*[:：]?\\s*([0-9]{4,8})",
-        "\\b([0-9]{6})\\b"  # Fallback: any standalone 6-digit number
-      ]
-    }
-    alphanumeric = {
-      patterns = [
-        "(?:code|token)\\s*[:：]?\\s*([A-Z0-9]{4,8})",
-        "verification code\\s*[:：]?\\s*([A-Z0-9]{4,8})"
-      ]
-    }
-    royalhealth = {
-      patterns = [
-        "(?i)Use verification code\\s+([0-9]{4,8})",  # Royal Health specific format
-        "(?i)verification code\\s+([0-9]{4,8})",       # General verification code
-        "(?i)(?:code|OTP|2FA|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",  # Common patterns
-        "\\b([0-9]{6})\\b"  # Fallback: any standalone 6-digit number
-      ]
+  # Universal fallback patterns when customer doesn't have specific regex
+  universal_patterns = [
+    "(?i)(?:verification code|code|OTP|2FA|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",
+    "([0-9]{4,8})\\s*is your.*(?:code|OTP|token)",
+    "(?i)(?:authentication|security|access)\\s*code\\s*[:：]?\\s*([0-9]{4,8})",
+    "(?i)passcode\\s*[:：]?\\s*([0-9]{4,8})",
+    "\\b([0-9]{6})\\b"  # Fallback: any standalone 6-digit number
+  ]
+  
+  # Build tenant configs with their patterns or fallback to universal
+  tenant_configs_with_patterns = {
+    for tenant, config in var.tenant_configs : tenant => {
+      sender_allowlist = config.sender_allowlist
+      regex_patterns   = coalesce(config.regex_patterns, local.universal_patterns)
+      webhook_url      = config.webhook_url
+      webhook_secret   = config.webhook_secret
     }
   }
 }
@@ -199,8 +184,7 @@ resource "aws_lambda_function" "parser" {
     variables = {
       DYNAMODB_TABLE   = aws_dynamodb_table.codes.name
       CODE_TTL_MINUTES = var.code_ttl_minutes
-      TENANT_CONFIGS   = jsonencode(var.tenant_configs)
-      REGEX_PROFILES   = jsonencode(local.regex_profiles)
+      TENANT_CONFIGS   = jsonencode(local.tenant_configs_with_patterns)
       ENABLE_WEBHOOKS  = var.enable_webhooks
       S3_BUCKET        = var.s3_bucket_name
       ENVIRONMENT      = var.env

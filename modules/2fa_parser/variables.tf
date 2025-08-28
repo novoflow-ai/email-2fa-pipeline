@@ -28,7 +28,7 @@ variable "tenant_configs" {
   description = "Tenant configurations for parsing 2FA emails"
   type = map(object({
     sender_allowlist = list(string)
-    regex_profile    = string
+    regex_patterns   = optional(list(string))
     webhook_url      = optional(string)
     webhook_secret   = optional(string)
   }))
@@ -36,7 +36,7 @@ variable "tenant_configs" {
     # Example tenant config
     # "acme" = {
     #   sender_allowlist = ["noreply@acme.com", "2fa@acme.com"]
-    #   regex_profile    = "standard"
+    #   regex_patterns   = ["(?<=code )\\d{6}", "verification code\\s+(\\d{6})"]
     #   webhook_url      = "https://internal.acme.com/2fa-webhook"
     #   webhook_secret   = "secret-key"
     # }
