@@ -27,7 +27,11 @@ exports.handler = async (event) => {
                 Key: key
             }).promise();
             
-            const emailContent = emailData.Body.toString('utf-8');
+            let emailContent = emailData.Body.toString('utf-8');
+            
+            // Simple quoted-printable decoding for =3D
+            emailContent = emailContent.replace(/=3D/g, '=');
+            emailContent = emailContent.replace(/=\r?\n/g, ''); // Remove soft line breaks
             
             // Extract recipient and sender from email headers
             const toMatch = emailContent.match(/^(?:To|Delivered-To|X-Original-To):\s*(.+)$/mi);
@@ -77,13 +81,39 @@ exports.handler = async (event) => {
             
             console.log(`Processing email from ${sender} to ${recipient} (tenant: ${tenant})`);
             
-            // Extract code using regex
-            const codeMatch = emailContent.match(/verification code is:\s*(\d{4,8})/i) ||
-                             emailContent.match(/code:\s*(\d{4,8})/i) ||
-                             emailContent.match(/\b(\d{6})\b/); // fallback: any 6 digits
+            // Extract code using tenant-specific regex patterns
+            const regexPatterns = tenantConfig.regex_patterns || [
+                "(?:verification code|code|OTP|2FA|token|pin)\\s*[:：]?\\s*([0-9]{4,8})",
+                "([0-9]{4,8})\\s*is your.*(?:code|OTP|token)",
+                "\\b([0-9]{6})\\b"  // Fallback: any standalone 6-digit number
+            ];
+            
+            let codeMatch = null;
+            for (const pattern of regexPatterns) {
+                try {
+                    // Handle case-insensitive flag
+                    let flags = '';
+                    let cleanPattern = pattern;
+                    if (pattern.startsWith('(?i)')) {
+                        flags = 'i';
+                        cleanPattern = pattern.substring(4);
+                    }
+                    
+                    const regex = new RegExp(cleanPattern, flags);
+                    const match = emailContent.match(regex);
+                    if (match) {
+                        codeMatch = match;
+                        console.log(`Code matched with pattern: ${pattern}`);
+                        break;
+                    }
+                } catch (e) {
+                    console.error(`Invalid regex pattern: ${pattern}`, e);
+                }
+            }
             
             if (codeMatch) {
-                const code = codeMatch[1];
+                // Handle both capture groups and full matches (from lookbehind)
+                const code = codeMatch[1] || codeMatch[0];
                 console.log(`Found code: ${code}`);
                 
                 // Store in DynamoDB
