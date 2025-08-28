@@ -148,6 +148,9 @@ cat > "customers/${CUSTOMER_NAME}.json" <<EOF
 }
 EOF
 
+# Get API URL from setup outputs
+API_URL=$(jq -r .api_gateway_url "$SETUP_FILE" 2>/dev/null || echo "https://your-api-gateway-url")
+
 # Create customer README
 cat > "customers/${CUSTOMER_NAME}-README.md" <<EOF
 # Customer: $CUSTOMER_NAME
@@ -170,9 +173,9 @@ cat > "customers/${CUSTOMER_NAME}-README.md" <<EOF
 ### Retrieve Latest Code
 
 \`\`\`bash
-curl -X POST https://your-api-gateway-url/codes \\
+curl -X POST $API_URL/codes \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: $API_KEY" \\
+  -H "x-api-key: $API_KEY" \\
   -d '{
     "recipient": "$EMAIL_ADDRESS"
   }'
@@ -226,7 +229,8 @@ echo "  API Key: $API_KEY"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
 echo "1. Apply Terraform changes: cd $ENV_DIR && terraform apply tfplan"
-echo "2. Share credentials: customers/${CUSTOMER_NAME}-README.md"
-echo "3. Test the integration: ./scripts/test-customer.sh $CUSTOMER_NAME"
+echo "2. Provision API key in Gateway: ./scripts/provision-api-key.sh $CUSTOMER_NAME"
+echo "3. Share credentials: customers/${CUSTOMER_NAME}-README.md"
+echo "4. Test the integration: ./scripts/test-api.sh $EMAIL_ADDRESS"
 echo ""
 echo -e "${GREEN}The customer can now forward 2FA emails to $EMAIL_ADDRESS${NC}"
