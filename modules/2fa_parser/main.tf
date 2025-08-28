@@ -387,6 +387,20 @@ resource "aws_lambda_permission" "api_gateway" {
 resource "aws_api_gateway_deployment" "lookup" {
   rest_api_id = aws_api_gateway_rest_api.lookup.id
 
+  triggers = {
+    # Force new deployment when method configuration changes
+    method_auth = jsonencode({
+      authorization    = aws_api_gateway_method.get_code.authorization
+      api_key_required = aws_api_gateway_method.get_code.api_key_required
+    })
+    # Redeploy when integration changes
+    integration_hash = sha256(jsonencode(aws_api_gateway_integration.lookup))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
   depends_on = [
     aws_api_gateway_method.get_code,
     aws_api_gateway_integration.lookup
