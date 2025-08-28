@@ -30,7 +30,7 @@ module "twofa_parser" {
   tenant_configs = {
     "ermi" = {
       sender_allowlist = ["*"]
-                  regex_patterns   = [
+      regex_patterns   = [
         "(?<=Use verification code )\\d{6}",           # Royal Health exact format
         "(?<=verification code )\\d{6}",               # Generic verification code
         "(?i)verification\\s*code\\s+(\\d{6})",        # Flexible with potential whitespace
