@@ -16,7 +16,10 @@ echo -e "  Sender Whitelist Management"
 echo -e "======================================${NC}"
 
 # Check if setup has been run
-SETUP_FILE=$(find . -path "*/envs/*/setup-outputs.json" 2>/dev/null | head -1)
+# Get script's parent directory (project root)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+SETUP_FILE=$(find "$PROJECT_ROOT" -path "*/envs/*/setup-outputs.json" 2>/dev/null | head -1)
 if [ -z "$SETUP_FILE" ] || [ ! -f "$SETUP_FILE" ]; then
     echo -e "${RED}❌ Infrastructure not set up. Run setup-infrastructure.sh first.${NC}"
     exit 1

@@ -29,7 +29,7 @@ module "twofa_parser" {
   # Configure tenant parsing rules
   tenant_configs = {
     "ermi" = {
-      sender_allowlist = ["no_reply@royalsecure.com"]  # Only accept from RoyalSecure
+      sender_allowlist = ["georges@novoflow.io"]
       regex_profile    = "universal"  # Matches various 2FA formats
     }
   }
