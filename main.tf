@@ -43,20 +43,6 @@ resource "aws_kms_key" "inbound" {
             "kms:GrantIsForAWSResource" = true
           }
         }
-      },
-      {
-        Sid       = "AllowSQSUse", # For SQS encryption if needed
-        Effect    = "Allow",
-        Principal = "*",
-        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"],
-        Resource  = "*",
-        Condition = {
-          StringEquals = {
-            "kms:CallerAccount" = local.account_id,
-            "kms:ViaService"    = "sqs.${local.region}.amazonaws.com"
-          },
-          Bool = { "kms:GrantIsForAWSResource" = true }
-        }
       }
     ]
   })
