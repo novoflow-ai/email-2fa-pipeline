@@ -43,6 +43,20 @@ resource "aws_kms_key" "inbound" {
             "kms:GrantIsForAWSResource" = true
           }
         }
+      },
+      {
+        Sid       = "AllowSQSUse", # For SQS encryption if needed
+        Effect    = "Allow",
+        Principal = "*",
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"],
+        Resource  = "*",
+        Condition = {
+          StringEquals = {
+            "kms:CallerAccount" = local.account_id,
+            "kms:ViaService"    = "sqs.${local.region}.amazonaws.com"
+          },
+          Bool = { "kms:GrantIsForAWSResource" = true }
+        }
       }
     ]
   })
@@ -236,6 +250,7 @@ resource "aws_ses_receipt_rule" "inbound_to_s3" {
     position          = 2
     bucket_name       = aws_s3_bucket.inbound.bucket
     object_key_prefix = var.object_prefix
+    kms_key_arn       = aws_kms_key.inbound.arn
   }
 
   depends_on = [
