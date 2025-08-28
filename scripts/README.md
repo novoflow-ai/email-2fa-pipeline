@@ -29,14 +29,16 @@ Sets up the base infrastructure for the 2FA email pipeline.
 ## Customer Provisioning
 
 ### `provision-customer.sh`
-Provisions a dedicated email address for a customer to receive forwarded 2FA emails.
+Provisions a dedicated email address and API access for a customer to receive forwarded 2FA emails.
 
 **What it does:**
 - Creates email address: `[customer]@auth.novoflow.io`
 - Generates unique API key for customer
+- Automatically provisions API key in API Gateway
+- Associates key with usage plan for rate limiting
 - Accepts 2FA emails from any sender
 - Auto-extracts codes using universal regex patterns
-- Creates customer documentation with API examples
+- Creates customer documentation with working API examples
 
 **Usage:**
 ```bash
@@ -51,25 +53,25 @@ Customer name: acme
 → Ready to receive forwarded 2FA emails
 ```
 
-### `test-customer.sh`
-Tests the complete 2FA flow for a customer, simulating email forwarding and API retrieval.
+### `test-api.sh` (NEW)
+Tests the API Gateway endpoint for retrieving 2FA codes.
 
 **What it does:**
-- Sends test email with random code
-- Waits for processing
-- Verifies code extraction in DynamoDB
-- Tests API lookup
-- Confirms code marked as USED
-- Reports processing latency
+- Calls the API Gateway endpoint with proper authentication
+- Uses API key authentication (not AWS IAM)
+- Returns the latest active code for a recipient
+- Validates proper API response format
 
 **Usage:**
 ```bash
-# Interactive mode
-./scripts/test-customer.sh
+# Test API for a customer email
+./scripts/test-api.sh acme@auth.novoflow.io
 
-# Direct mode
-./scripts/test-customer.sh acme
+# Interactive mode - lists available customers
+./scripts/test-api.sh
 ```
+
+**Note:** The deprecated `test-customer.sh` has been moved to `scripts/deprecated/` as it bypassed the API Gateway.
 
 ### `list-customers.sh`
 Displays all provisioned customer email accounts and recent activity.
@@ -119,9 +121,9 @@ All scripts require:
 2. **Provision first customer**:
    ```bash
    ./scripts/provision-customer.sh
-   # Enter: walmart
+   # Enter: walmart (automatically creates API key)
    cd envs/dev && terraform apply tfplan
-   ./scripts/test-customer.sh walmart
+   ./scripts/test-api.sh walmart@auth.novoflow.io
    ```
 
 3. **Customer integration**:
@@ -137,8 +139,8 @@ All scripts require:
    # Add new customer
    ./scripts/provision-customer.sh
    
-   # Test specific customer
-   ./scripts/test-customer.sh customer-name
+   # Test specific customer API
+   ./scripts/test-api.sh customer@auth.novoflow.io
    ```
 
 ## Customer API Usage
@@ -146,9 +148,9 @@ All scripts require:
 Once provisioned, customers can retrieve their 2FA codes:
 
 ```bash
-curl -X POST https://your-api-gateway-url/codes \
+curl -X POST https://ph8a9c26u5.execute-api.us-east-2.amazonaws.com/dev/codes \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: <customer-api-key>" \
+  -H "x-api-key: <customer-api-key>" \
   -d '{"recipient": "customer@auth.novoflow.io"}'
 ```
 
@@ -170,34 +172,14 @@ Scripts create/modify these files:
 - `customers/<customer>.json` - Customer configuration
 - `customers/<customer>-README.md` - Customer documentation
 
-### 6. manage-senders.sh
 
-Manages verified senders and helps with SES sandbox limitations.
-
-**Usage:**
-```bash
-./scripts/manage-senders.sh
-```
-
-**Features:**
-- Check SES sandbox status
-- List verified email addresses and domains
-- Add new verified senders
-- Configure per-customer sender whitelists
-- Request production access (removes all sender restrictions)
-
-**Important Notes:**
-- In **Sandbox Mode**: Only verified senders can send emails to your pipeline
-- In **Production Mode**: Any sender can send emails (no verification needed)
-- Application-level whitelisting adds extra security even in production
 
 ## Security Notes
 
 - Each customer gets a unique API key
+- API keys are automatically provisioned in API Gateway
 - All AWS operations use named profiles
 - Customer configurations stored locally
 - No PHI stored in configuration files
 - All data encrypted at rest and in transit
 - HIPAA compliant infrastructure
-- Sender verification required in SES sandbox mode
-- Optional application-level sender whitelisting per customer

@@ -221,6 +221,59 @@ For technical support or issues:
 - Include your customer ID: $CUSTOMER_NAME
 EOF
 
+# Provision API key in API Gateway
+echo -e "\n${YELLOW}Provisioning API key in API Gateway...${NC}"
+
+# Get API Gateway config
+API_ID=$(jq -r .api_gateway_id "$SETUP_FILE" 2>/dev/null || echo "ph8a9c26u5")
+
+# Check if key already exists
+EXISTING_KEY=$(aws apigateway get-api-keys \
+    --profile "$AWS_PROFILE" \
+    --region "$REGION" \
+    --name-query "$CUSTOMER_NAME-key" \
+    --query "items[0].id" \
+    --output text 2>/dev/null || echo "")
+
+if [ ! -z "$EXISTING_KEY" ] && [ "$EXISTING_KEY" != "None" ]; then
+    echo -e "  ${YELLOW}API key already exists${NC}"
+else
+    # Create API key
+    KEY_ID=$(aws apigateway create-api-key \
+        --profile "$AWS_PROFILE" \
+        --region "$REGION" \
+        --name "$CUSTOMER_NAME-key" \
+        --description "2FA API key for $EMAIL_ADDRESS" \
+        --value "$API_KEY" \
+        --enabled \
+        --query 'id' \
+        --output text 2>/dev/null || echo "")
+    
+    if [ ! -z "$KEY_ID" ] && [ "$KEY_ID" != "None" ]; then
+        echo -e "  ${GREEN}✓ Created API key${NC}"
+        
+        # Get usage plan
+        USAGE_PLAN=$(aws apigateway get-usage-plans \
+            --profile "$AWS_PROFILE" \
+            --region "$REGION" \
+            --query "items[?apiStages[?apiId=='$API_ID']].id | [0]" \
+            --output text 2>/dev/null || echo "")
+        
+        if [ ! -z "$USAGE_PLAN" ] && [ "$USAGE_PLAN" != "None" ]; then
+            # Associate with usage plan
+            aws apigateway create-usage-plan-key \
+                --profile "$AWS_PROFILE" \
+                --region "$REGION" \
+                --usage-plan-id "$USAGE_PLAN" \
+                --key-id "$KEY_ID" \
+                --key-type API_KEY >/dev/null 2>&1
+            echo -e "  ${GREEN}✓ Associated with usage plan${NC}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠️ Could not create API key (may need manual setup)${NC}"
+    fi
+fi
+
 echo -e "\n${GREEN}✅ Customer provisioned successfully!${NC}"
 echo ""
 echo -e "${BLUE}Customer Details:${NC}"
@@ -229,8 +282,7 @@ echo "  API Key: $API_KEY"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
 echo "1. Apply Terraform changes: cd $ENV_DIR && terraform apply tfplan"
-echo "2. Provision API key in Gateway: ./scripts/provision-api-key.sh $CUSTOMER_NAME"
-echo "3. Share credentials: customers/${CUSTOMER_NAME}-README.md"
-echo "4. Test the integration: ./scripts/test-api.sh $EMAIL_ADDRESS"
+echo "2. Share credentials: customers/${CUSTOMER_NAME}-README.md"
+echo "3. Test the integration: ./scripts/test-api.sh $EMAIL_ADDRESS"
 echo ""
 echo -e "${GREEN}The customer can now forward 2FA emails to $EMAIL_ADDRESS${NC}"
