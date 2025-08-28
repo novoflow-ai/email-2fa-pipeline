@@ -156,6 +156,21 @@ update_sender_allowlist() {
     fi
 }
 
+# Function to show apply changes reminder
+show_apply_reminder() {
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}⚠️  IMPORTANT: Your changes have been saved to the Terraform files${NC}"
+    echo -e "${YELLOW}   but they are NOT yet applied to the infrastructure!${NC}"
+    echo ""
+    echo -e "${YELLOW}   To apply your changes, run:${NC}"
+    echo ""
+    echo -e "${BLUE}   cd $ENV_DIR && terraform apply${NC}"
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
 # Main menu
 main_menu() {
     while true; do
@@ -218,9 +233,9 @@ main_menu() {
                 done
                 
                 if [ ${#patterns[@]} -gt 0 ]; then
-                    update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"
-                    echo -e "\n${YELLOW}To apply changes:${NC}"
-                    echo -e "${BLUE}cd $ENV_DIR && terraform apply${NC}"
+                    if update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"; then
+                        show_apply_reminder
+                    fi
                 else
                     echo -e "${RED}No patterns entered${NC}"
                 fi
@@ -249,9 +264,9 @@ main_menu() {
                 echo ""
                 read -p "New allowlist: " NEW_SENDERS
                 
-                update_sender_allowlist "$CUSTOMER_NAME" "$NEW_SENDERS"
-                echo -e "\n${YELLOW}To apply changes:${NC}"
-                echo -e "${BLUE}cd $ENV_DIR && terraform apply${NC}"
+                if update_sender_allowlist "$CUSTOMER_NAME" "$NEW_SENDERS"; then
+                    show_apply_reminder
+                fi
                 ;;
             
             4)
@@ -314,7 +329,9 @@ if [ ! -z "$1" ]; then
         done
         
         if [ ${#patterns[@]} -gt 0 ]; then
-            update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"
+            if update_regex_patterns "$CUSTOMER_NAME" "${patterns[@]}"; then
+                show_apply_reminder
+            fi
         else
             echo -e "${RED}No patterns entered${NC}"
         fi
@@ -322,11 +339,10 @@ if [ ! -z "$1" ]; then
         echo -e "\n${YELLOW}Enter new sender allowlist:${NC}"
         echo "  • Use '*' to accept all, or comma-separate multiple"
         read -p "New allowlist: " NEW_SENDERS
-        update_sender_allowlist "$CUSTOMER_NAME" "$NEW_SENDERS"
+        if update_sender_allowlist "$CUSTOMER_NAME" "$NEW_SENDERS"; then
+            show_apply_reminder
+        fi
     fi
-    
-    echo -e "\n${YELLOW}To apply changes:${NC}"
-    echo -e "${BLUE}cd $ENV_DIR && terraform apply${NC}"
 else
     # Interactive menu mode
     main_menu
