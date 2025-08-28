@@ -263,10 +263,11 @@ resource "aws_api_gateway_resource" "codes" {
 
 # API Gateway method
 resource "aws_api_gateway_method" "get_code" {
-  rest_api_id   = aws_api_gateway_rest_api.lookup.id
-  resource_id   = aws_api_gateway_resource.codes.id
-  http_method   = "POST"
-  authorization = "AWS_IAM"
+  rest_api_id      = aws_api_gateway_rest_api.lookup.id
+  resource_id      = aws_api_gateway_resource.codes.id
+  http_method      = "POST"
+  authorization    = "NONE"
+  api_key_required = true
 }
 
 # Lambda for API lookups
